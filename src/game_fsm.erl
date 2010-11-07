@@ -14,14 +14,15 @@
 
 %% gen_fsm callbacks
 -export([init/1,
-	 join/2,
-	 started/3, turn/3,
+	 join/2, turn/2,
+	 started/3, wait_turn/3,
 	 handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
 -record(state, {player1,
 		player2,
-		current_player_no}).
+		current_player_no,
+		turn_no}).
 
 %%====================================================================
 %% API
@@ -38,6 +39,9 @@ start_link(Player) ->
 join(Pid, Player) ->
     gen_fsm:sync_send_event(Pid, {join, Player}).
 
+turn(Pid, Player) ->
+    gen_fsm:sync_send_event(Pid, {turn, Player}).
+
 %%====================================================================
 %% gen_fsm callbacks
 %%====================================================================
@@ -52,13 +56,15 @@ join(Pid, Player) ->
 %%--------------------------------------------------------------------
 init([Player]) ->
     {ok, started, #state{player1=Player,
-			 player2=none}}.
+			 player2=none,
+			 current_player_no=0,
+			 turn_no=0}}.
 
 started({join, Player}, From, State) ->
     case try_join(Player, State) of
 	{ok, NewState} ->
-	    % send events to clients
-	    {reply, ok, turn, NewState};
+	    % send events to clients	    
+	    {reply, ok, wait_turn, NewState};
 	{error} ->
 	    {reply, error, started, State}
     end;
@@ -75,11 +81,32 @@ try_join(Player, State) when State#state.player2 =:= none ->
 try_join(_Player, _State) ->
     {error}.
 
-turn({join, Player}, From, State) ->
-    {reply, error, turn, State};
+wait_turn({turn, Player}, From, State) ->
+    case is_current_player(Player, State) of
+	true ->
+	    NewState = do_turn(Player, State),
+	    {reply, ok, wait_turn, NewState};
+	false ->
+	    {reply, error, wait_turn, State}
+    end;
 
-turn(_Event, From, State) ->
-    {reply, ok, turn, State}.
+wait_turn(_Event, From, State) ->
+    {reply, error, wait_turn, State}.
+
+is_current_player(Player, State) ->
+    IsCurrent = ((State#state.player1 =:= Player andalso State#state.current_player_no =:= 0) orelse
+		 (State#state.player2 =:= Player andalso State#state.current_player_no =:= 1)),
+    IsCurrent.
+
+do_turn(Player, State) ->
+    State1 = case State#state.current_player_no == 0 of
+		 true ->
+		     State#state{current_player_no = 1};
+		 false ->
+		     State#state{current_player_no = 0}
+	     end,
+    State2 = State1#state{turn_no = State1#state.turn_no +1},
+    State2.
 
 %%--------------------------------------------------------------------
 %% Function: 
