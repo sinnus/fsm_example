@@ -48,6 +48,18 @@ handle_event({init, Player}, State) ->
     error_logger:info_msg("init player: ~p\n", [Player]),
     {ok, State};
 
+handle_event({join, Player}, State) ->
+    error_logger:info_msg("join player: ~p\n", [Player]),
+    {ok, State};
+
+handle_event({turn, Player}, State) ->
+    error_logger:info_msg("turn player: ~p\n", [Player]),
+    {ok, State};
+
+handle_event({finish}, State) ->
+    error_logger:info_msg("finish\n", []),
+    {ok, State};
+
 handle_event(_Event, State) ->
     {ok, State}.
 

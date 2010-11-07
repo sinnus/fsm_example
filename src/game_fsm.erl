@@ -66,7 +66,7 @@ init([Player, EventManagerPid]) ->
 started({join, Player}, From, State) ->
     case try_join(Player, State) of
 	{ok, NewState} ->
-	    % send events to clients	    
+	    gen_event:notify(State#state.event_manager_pid, {join, Player}),
 	    {reply, ok, wait_turn, NewState};
 	{error} ->
 	    {reply, error, started, State}
@@ -114,9 +114,11 @@ do_turn(Player, State) ->
 		     State#state{current_player_no = 0}
 	     end,
     State2 = State1#state{turn_no = State1#state.turn_no +1},
-    
+
+    gen_event:notify(State#state.event_manager_pid, {turn, Player}),    
     case State2#state.turn_no == ?MAX_TURNS of
 	true ->
+	    gen_event:notify(State#state.event_manager_pid, {finish}),
 	    {finish, State2};
 	false ->
 	    {ok, State2}
