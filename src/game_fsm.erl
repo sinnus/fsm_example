@@ -10,7 +10,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/1]).
+-export([start_link/2]).
 -define(MAX_TURNS, 3).
 %% gen_fsm callbacks
 -export([init/1,
@@ -22,7 +22,8 @@
 -record(state, {player1,
 		player2,
 		current_player_no,
-		turn_no}).
+		turn_no,
+		event_manager_pid}).
 
 %%====================================================================
 %% API
@@ -33,8 +34,8 @@
 %% initialize. To ensure a synchronized start-up procedure, this function
 %% does not return until Module:init/1 has returned.  
 %%--------------------------------------------------------------------
-start_link(Player) ->
-    gen_fsm:start_link(?MODULE, [Player], []).
+start_link(Player, EventManagerPid) ->
+    gen_fsm:start_link(?MODULE, [Player, EventManagerPid], []).
 
 join(Pid, Player) ->
     gen_fsm:sync_send_event(Pid, {join, Player}).
@@ -54,11 +55,13 @@ turn(Pid, Player) ->
 %% gen_fsm:start_link/3,4, this function is called by the new process to 
 %% initialize. 
 %%--------------------------------------------------------------------
-init([Player]) ->
-    {ok, started, #state{player1=Player,
-			 player2=none,
-			 current_player_no=0,
-			 turn_no=0}}.
+init([Player, EventManagerPid]) ->
+    gen_event:notify(EventManagerPid, {init, Player}),
+    {ok, started, #state{player1 = Player,
+			 player2 = none,
+			 current_player_no = 0,
+			 turn_no = 0,
+			 event_manager_pid = EventManagerPid}}.
 
 started({join, Player}, From, State) ->
     case try_join(Player, State) of
@@ -111,7 +114,7 @@ do_turn(Player, State) ->
 		     State#state{current_player_no = 0}
 	     end,
     State2 = State1#state{turn_no = State1#state.turn_no +1},
-
+    
     case State2#state.turn_no == ?MAX_TURNS of
 	true ->
 	    {finish, State2};
