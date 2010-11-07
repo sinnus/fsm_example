@@ -11,7 +11,7 @@
 
 %% API
 -export([start_link/1]).
-
+-define(MAX_TURNS, 3).
 %% gen_fsm callbacks
 -export([init/1,
 	 join/2, turn/2,
@@ -84,8 +84,13 @@ try_join(_Player, _State) ->
 wait_turn({turn, Player}, From, State) ->
     case is_current_player(Player, State) of
 	true ->
-	    NewState = do_turn(Player, State),
-	    {reply, ok, wait_turn, NewState};
+	    TurnResult = do_turn(Player, State),
+	    case TurnResult of
+		{ok, NewState} ->
+		    {reply, ok, wait_turn, NewState};
+		{finish, NewState} ->
+		    {stop, normal, stop, NewState}
+	    end;
 	false ->
 	    {reply, error, wait_turn, State}
     end;
@@ -99,14 +104,19 @@ is_current_player(Player, State) ->
     IsCurrent.
 
 do_turn(Player, State) ->
-    State1 = case State#state.current_player_no == 0 of
-		 true ->
-		     State#state{current_player_no = 1};
-		 false ->
-		     State#state{current_player_no = 0}
-	     end,
-    State2 = State1#state{turn_no = State1#state.turn_no +1},
-    State2.
+    case State#state.turn_no == ?MAX_TURNS of
+	true ->
+	    {finish, State};
+	false ->
+	    State1 = case State#state.current_player_no == 0 of
+			 true ->
+			     State#state{current_player_no = 1};
+			 false ->
+			     State#state{current_player_no = 0}
+		     end,
+	    State2 = State1#state{turn_no = State1#state.turn_no +1},
+	    {ok, State2}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: 

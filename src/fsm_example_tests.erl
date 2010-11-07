@@ -10,6 +10,7 @@ hook_test() ->
     ?assert(Result2 =:= ok),
     Result3 = game_fsm:join(Pid, "player2"),
     ?assert(Result3 =:= error),
+
     Result4 = game_fsm:turn(Pid, "player2"),
     ?assert(Result4 =:= error),
     Result5 = game_fsm:turn(Pid, "player1"),
@@ -21,4 +22,7 @@ hook_test() ->
     ?assert(Result7 =:= error),
 
     Result8 = game_fsm:turn(Pid, "player1"),
-    ?assert(Result8 =:= ok).
+    ?assert(Result8 =:= ok),
+    
+    Result9 = game_fsm:turn(Pid, "player2"),
+    ?assert(Result9 =:= stop).
