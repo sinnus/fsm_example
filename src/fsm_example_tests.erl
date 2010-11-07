@@ -22,7 +22,4 @@ hook_test() ->
     ?assert(Result7 =:= error),
 
     Result8 = game_fsm:turn(Pid, "player1"),
-    ?assert(Result8 =:= ok),
-    
-    Result9 = game_fsm:turn(Pid, "player2"),
-    ?assert(Result9 =:= stop).
+    ?assert(Result8 =:= stop).

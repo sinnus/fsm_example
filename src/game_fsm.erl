@@ -104,17 +104,18 @@ is_current_player(Player, State) ->
     IsCurrent.
 
 do_turn(Player, State) ->
-    case State#state.turn_no == ?MAX_TURNS of
+    State1 = case State#state.current_player_no == 0 of
+		 true ->
+		     State#state{current_player_no = 1};
+		 false ->
+		     State#state{current_player_no = 0}
+	     end,
+    State2 = State1#state{turn_no = State1#state.turn_no +1},
+
+    case State2#state.turn_no == ?MAX_TURNS of
 	true ->
-	    {finish, State};
+	    {finish, State2};
 	false ->
-	    State1 = case State#state.current_player_no == 0 of
-			 true ->
-			     State#state{current_player_no = 1};
-			 false ->
-			     State#state{current_player_no = 0}
-		     end,
-	    State2 = State1#state{turn_no = State1#state.turn_no +1},
 	    {ok, State2}
     end.
 
