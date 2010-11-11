@@ -33,13 +33,18 @@ reader_start(Socket, Pid) ->
 
 reader_loop(Socket, Pid) ->
     case gen_tcp:recv(Socket, 0) of
+	{ok, <<"quit", _R/binary>>} ->
+	    close_socket(Pid);
 	{ok, Data} ->
 	    error_logger:info_msg("Got Data: ~p", [Data]),
 	    reader_loop(Socket, Pid);
 	{error, closed} ->
-	    unlink(Pid),
-	    gen_server:cast(Pid, socket_closed)
+	    close_socket(Pid)
     end.
+
+close_socket(Pid) ->
+    unlink(Pid),
+    gen_server:cast(Pid, socket_closed).
 
 %%====================================================================
 %% gen_server callbacks
