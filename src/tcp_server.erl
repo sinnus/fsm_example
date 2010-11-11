@@ -1,7 +1,13 @@
-%% Implements a simple Echo server using the gen_listener_tcp behaviour.
-
+%%%-------------------------------------------------------------------
+%%% File    : tcp_server.erl
+%%% Author  : sinnus <sinnus@linux>
+%%% Description : 
+%%%
+%%% Created : 11 Nov 2010 by sinnus <sinnus@linux>
+%%%-------------------------------------------------------------------
 -module(tcp_server).
--behaviour(gen_listener_tcp).
+
+-export([start/0, init/1]).
 
 -define(TCP_PORT, 9234).
 -define(TCP_OPTS, [binary, inet,
@@ -11,58 +17,26 @@
                    {packet,    raw},
                    {reuseaddr, true}]).
 
-%% API
--export([start/0]).
-
-%% gen_listener_tcp callbacks
--export([init/1,
-         handle_accept/2,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
-
-%% @doc Start the server.
 start() ->
-    gen_listener_tcp:start({local, ?MODULE}, ?MODULE, [], []).
-
-%% @doc The echo client process.
-echo_client(Socket) ->
-    error_logger:info_msg("client()~n"),
-    ok = inet:setopts(Socket, [{active, once}]),
-    receive
-        {tcp, Socket, <<"quit", _R/binary>>} ->
-            error_logger:info_msg("Quit Requested."),
-            gen_tcp:send(Socket, "Bye now.\r\n"),
-            gen_tcp:close(Socket);
-        {tcp, Socket, Data} ->
-            error_logger:info_msg("Got Data: ~p", [Data]),
-            gen_tcp:send(Socket, "I Received " ++ Data),
-            echo_client(Socket);
-        {tcp_closed, Socket} ->
-            error_logger:info_msg("Client Disconnected.")
+    case gen_tcp:listen(?TCP_PORT, ?TCP_OPTS) of
+	{ok, LSocket} ->
+	    Pid = spawn(?MODULE, init, [LSocket]),
+	    ok = gen_tcp:controlling_process(LSocket, self()),
+	    {ok, Pid};
+	{error, Reason} -> {error, Reason}
     end.
 
-init([]) ->
-    {ok, {?TCP_PORT, ?TCP_OPTS}, nil}.
+init(LSocket) ->
+    error_logger:info_msg("tcp server listener started. Port: ~p~n", [?TCP_PORT]),
+    loop(LSocket).
 
-handle_accept(Sock, State) ->
-    Pid = spawn(fun() -> echo_client(Sock) end),
-    gen_tcp:controlling_process(Sock, Pid),
-    {noreply, State}.
-
-handle_call(Request, _From, State) ->
-    {reply, {illegal_request, Request}, State}.
-
-handle_cast(_Request, State) ->
-    {noreply, State}.
-
-handle_info(_Info, State) ->
-    {noreply, State}.
-
-terminate(_Reason, _State) ->
-    ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+loop(LSocket) ->
+    case gen_tcp:accept(LSocket) of
+	{ok, Socket} ->
+	    error_logger:info_msg("accepted connection~n", []),
+	    {ok, _Pid} = tcp_connection:start_link(Socket),
+	    loop(LSocket);
+	{error, Reason} ->
+	    error_logger:error_msg("couldn't accept socket. Reason: ~p~n", [Reason]),
+	    exit(Reason)
+    end.
