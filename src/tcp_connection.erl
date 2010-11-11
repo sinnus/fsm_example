@@ -103,9 +103,7 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(Reason, State) ->
-    error_logger:info_msg("1", []),
     Socket = State#state.socket,
-    error_logger:info_msg("2", []),
     inet:close(Socket),
     error_logger:info_msg("terminating, pid=~w, reason=~w", [self(), Reason]),
     ok.
