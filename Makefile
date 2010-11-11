@@ -18,3 +18,6 @@ test: all
 
 perf: test
 	$(ERL) -pa ebin/ -eval "performance_suite:test()"  -s init stop -noshell
+
+run_server: all
+	erl -pa ebin -s tcp_server
