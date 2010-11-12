@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, reader_start/2]).
+-export([start_link/1, start/1, reader_start/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,6 +28,9 @@
 start_link(Socket) ->
     gen_server:start_link(?MODULE, [Socket], []).
 
+start(Socket) ->
+    gen_server:start(?MODULE, [Socket], []).
+
 reader_start(Socket, Pid) ->
     reader_loop(Socket, Pid).
 
@@ -35,6 +38,10 @@ reader_loop(Socket, Pid) ->
     case gen_tcp:recv(Socket, 0) of
 	{ok, <<"quit", _R/binary>>} ->
 	    close_socket(Pid);
+	{ok, <<"test", _R/binary>>} ->
+	    %A = 0 / 0,
+	    send_message(Pid, "hello"),
+	    reader_loop(Socket, Pid);
 	{ok, Data} ->
 	    error_logger:info_msg("Got Data: ~p", [Data]),
 	    reader_loop(Socket, Pid);
@@ -45,6 +52,9 @@ reader_loop(Socket, Pid) ->
 close_socket(Pid) ->
     unlink(Pid),
     gen_server:cast(Pid, socket_closed).
+
+send_message(Pid, Message) ->
+    gen_server:cast(Pid, {send_message, Message}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -58,6 +68,7 @@ close_socket(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([Socket]) ->
+    process_flag(trap_exit, true),
     spawn_link(?MODULE, reader_start, [Socket, self()]),
     {ok, #state{socket = Socket}}.
 
@@ -81,11 +92,14 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast(Request, State) ->
-    {Socket, Name} = State,
     case Request of
 	socket_closed ->
-	    error_logger:info_msg("socket closed", []),
+	    error_logger:info_msg("socket closed~n", []),
 	    {stop,normal,State};
+	{send_message, Message} ->
+	    Socket = State#state.socket,
+	    gen_tcp:send(Socket, Message),
+	    {noreply,State};
 	Other ->
 	    error_logger:info_msg("unknown cast, request=~w", [Other]),
 	    {noreply,State}
@@ -97,6 +111,9 @@ handle_cast(Request, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({'EXIT', _From, Reason}, State) ->    
+    {stop, Reason, State};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
