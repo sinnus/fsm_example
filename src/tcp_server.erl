@@ -18,6 +18,7 @@
                    {reuseaddr, true}]).
 
 start() ->
+    tcp_connection_manager:start_link(),
     case gen_tcp:listen(?TCP_PORT, ?TCP_OPTS) of
 	{ok, LSocket} ->
 	    Pid = spawn(?MODULE, init, [LSocket]),

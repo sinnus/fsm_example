@@ -1,22 +1,22 @@
 %%%-------------------------------------------------------------------
-%%% File    : tcp_connection.erl
+%%% File    : tcp_connection_manager.erl
 %%% Author  : sinnus <sinnus@linux>
 %%% Description : 
 %%%
-%%% Created : 11 Nov 2010 by sinnus <sinnus@linux>
+%%% Created : 12 Nov 2010 by sinnus <sinnus@linux>
 %%%-------------------------------------------------------------------
--module(tcp_connection).
+-module(tcp_connection_manager).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, start/1, reader_start/2]).
+-export([start_link/0, add_connection/1, remove_connection/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {socket}).
+-record(state, {connections}).
 
 %%====================================================================
 %% API
@@ -25,37 +25,16 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(Socket) ->
-    gen_server:start_link(?MODULE, [Socket], []).
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-start(Socket) ->
-    gen_server:start(?MODULE, [Socket], []).
+add_connection(TcpConnectionPid) ->
+    gen_server:call(?MODULE, {add_connection, TcpConnectionPid}),
+    ok.
 
-reader_start(Socket, Pid) ->
-    tcp_connection_manager:add_connection(Pid),
-    reader_loop(Socket, Pid).
-
-reader_loop(Socket, Pid) ->
-    case gen_tcp:recv(Socket, 0) of
-	{ok, <<"quit", _R/binary>>} ->
-	    close_socket(Pid);
-	{ok, <<"test", _R/binary>>} ->
-	    %A = 0 / 0,
-	    send_message(Pid, "hello"),
-	    reader_loop(Socket, Pid);
-	{ok, Data} ->
-	    error_logger:info_msg("Got Data: ~p", [Data]),
-	    reader_loop(Socket, Pid);
-	{error, closed} ->
-	    close_socket(Pid)
-    end.
-
-close_socket(Pid) ->
-    unlink(Pid),
-    gen_server:cast(Pid, socket_closed).
-
-send_message(Pid, Message) ->
-    gen_server:cast(Pid, {send_message, Message}).
+remove_connection(TcpConnectionPid) ->
+    gen_server:call(?MODULE, {remove_connection, TcpConnectionPid}),
+    ok.
 
 %%====================================================================
 %% gen_server callbacks
@@ -68,10 +47,8 @@ send_message(Pid, Message) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([Socket]) ->
-    process_flag(trap_exit, true),
-    spawn_link(?MODULE, reader_start, [Socket, self()]),
-    {ok, #state{socket = Socket}}.
+init([]) ->
+    {ok, #state{connections=[]}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -82,6 +59,18 @@ init([Socket]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call({add_connection, TcpConnectionPid}, _From, State) ->
+    Connections = State#state.connections,
+    NewState = State#state{connections = [TcpConnectionPid|Connections]},
+    error_logger:info_msg("add tcp connection. New list ~p~n", [NewState#state.connections]),
+    {reply, ok, NewState};
+
+handle_call({remove_connection, TcpConnectionPid}, _From, State) ->
+    NewConnections = lists:delete(TcpConnectionPid, State#state.connections),
+    NewState = State#state{connections = NewConnections},
+    error_logger:info_msg("remove tcp connection. New list ~p~n", [NewConnections]),
+    {reply, ok, NewState};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -92,19 +81,8 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast(Request, State) ->
-    case Request of
-	socket_closed ->
-	    error_logger:info_msg("socket closed~n", []),
-	    {stop,normal,State};
-	{send_message, Message} ->
-	    Socket = State#state.socket,
-	    gen_tcp:send(Socket, Message),
-	    {noreply,State};
-	Other ->
-	    error_logger:info_msg("unknown cast, request=~w", [Other]),
-	    {noreply,State}
-    end.
+handle_cast(_Msg, State) ->
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |
@@ -112,9 +90,6 @@ handle_cast(Request, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'EXIT', _From, Reason}, State) ->    
-    {stop, Reason, State};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -125,11 +100,7 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(Reason, State) ->
-    Socket = State#state.socket,
-    inet:close(Socket),
-    tcp_connection_manager:remove_connection(self()),
-    error_logger:info_msg("terminating, pid=~w, reason=~w", [self(), Reason]),
+terminate(_Reason, _State) ->
     ok.
 
 %%--------------------------------------------------------------------
