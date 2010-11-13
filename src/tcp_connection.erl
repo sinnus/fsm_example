@@ -10,14 +10,16 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, start/1, reader_start/2]).
+-export([start_link/1, start/1, reader_start/2, close_socket/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+-define(HANDSHAKE_TIMEOUT, 5).
+
 -record(state, {socket}).
--record(reader_state, {principal}).
+-record(reader_state, {principal, timeout_ref}).
 %%====================================================================
 %% API
 %%====================================================================
@@ -33,7 +35,8 @@ start(Socket) ->
 
 reader_start(Socket, Pid) ->
     tcp_connection_manager:add_connection(Pid),
-    ReaderState = #reader_state{principal = none},
+    {ok, TRef} = timer:apply_after(?HANDSHAKE_TIMEOUT * 1000, ?MODULE, close_socket, [Pid]),
+    ReaderState = #reader_state{principal = none, timeout_ref = TRef},
     reader_loop(Socket, Pid, ReaderState).
 
 reader_loop(Socket, Pid, ReaderState) ->
@@ -48,6 +51,7 @@ reader_loop(Socket, Pid, ReaderState) ->
 		    handle_data(Data, Socket, Pid, ReaderState)
 	    end;
 	{error, closed} ->
+	    unlink(Pid),
 	    close_socket(Pid)
     end.
 
@@ -60,9 +64,11 @@ handle_data(_Data, Socket, Pid, ReaderState) ->
 
 %%% --------------------------------------------------------------------
 
+timeout_socket(Pid) ->
+    error_logger:info_msg("Timeout connection ~p~n", [Pid]),
+    close_socket(Pid).
 
 close_socket(Pid) ->
-    unlink(Pid),
     gen_server:cast(Pid, socket_closed).
 
 send_message(Pid, Message) ->
@@ -71,6 +77,7 @@ send_message(Pid, Message) ->
 check_principal(Socket, Pid, ReaderState, Data) ->
     case Data of
 	<<"user1\r\n">> ->
+	    {ok, cancel} = timer:cancel(ReaderState#reader_state.timeout_ref),
 	    reader_loop(Socket, Pid, ReaderState#reader_state{principal = Data});
 	_ ->
 	    send_message(Pid, "Wrong principal\r\n"),
