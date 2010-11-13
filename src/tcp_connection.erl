@@ -17,7 +17,7 @@
 	 terminate/2, code_change/3]).
 
 -record(state, {socket}).
-
+-record(reader_state, {principal}).
 %%====================================================================
 %% API
 %%====================================================================
@@ -33,22 +33,33 @@ start(Socket) ->
 
 reader_start(Socket, Pid) ->
     tcp_connection_manager:add_connection(Pid),
-    reader_loop(Socket, Pid).
+    ReaderState = #reader_state{principal = none},
+    reader_loop(Socket, Pid, ReaderState).
 
-reader_loop(Socket, Pid) ->
+reader_loop(Socket, Pid, ReaderState) ->
     case gen_tcp:recv(Socket, 0) of
-	{ok, <<"quit", _R/binary>>} ->
-	    close_socket(Pid);
-	{ok, <<"test", _R/binary>>} ->
-	    %A = 0 / 0,
-	    send_message(Pid, "hello"),
-	    reader_loop(Socket, Pid);
 	{ok, Data} ->
 	    error_logger:info_msg("Got Data: ~p", [Data]),
-	    reader_loop(Socket, Pid);
+	    Principal = ReaderState#reader_state.principal,
+	    case Principal of
+		none ->
+		    check_principal(Socket, Pid, ReaderState, Data);
+		_ ->
+		    handle_data(Data, Socket, Pid, ReaderState)
+	    end;
 	{error, closed} ->
 	    close_socket(Pid)
     end.
+
+%%% --------------------------------------------------------------------
+handle_data(<<"quit\r\n">>, _Socket, Pid, _ReaderState) ->
+    close_socket(Pid);
+
+handle_data(_Data, Socket, Pid, ReaderState) ->
+    reader_loop(Socket, Pid, ReaderState).
+
+%%% --------------------------------------------------------------------
+
 
 close_socket(Pid) ->
     unlink(Pid),
@@ -56,6 +67,15 @@ close_socket(Pid) ->
 
 send_message(Pid, Message) ->
     gen_server:cast(Pid, {send_message, Message}).
+
+check_principal(Socket, Pid, ReaderState, Data) ->
+    case Data of
+	<<"user1\r\n">> ->
+	    reader_loop(Socket, Pid, ReaderState#reader_state{principal = Data});
+	_ ->
+	    send_message(Pid, "Wrong principal\r\n"),
+	    close_socket(Pid)
+    end.
 
 %%====================================================================
 %% gen_server callbacks
