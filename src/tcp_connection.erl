@@ -16,7 +16,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--define(HANDSHAKE_TIMEOUT, 5).
+-define(HANDSHAKE_TIMEOUT, 30).
 
 -record(state, {socket}).
 -record(reader_state, {principal, timeout_ref}).
@@ -64,10 +64,6 @@ handle_data(_Data, Socket, Pid, ReaderState) ->
 
 %%% --------------------------------------------------------------------
 
-timeout_socket(Pid) ->
-    error_logger:info_msg("Timeout connection ~p~n", [Pid]),
-    close_socket(Pid).
-
 close_socket(Pid) ->
     gen_server:cast(Pid, socket_closed).
 
@@ -75,12 +71,27 @@ send_message(Pid, Message) ->
     gen_server:cast(Pid, {send_message, Message}).
 
 check_principal(Socket, Pid, ReaderState, Data) ->
-    case Data of
-	<<"user1\r\n">> ->
-	    {ok, cancel} = timer:cancel(ReaderState#reader_state.timeout_ref),
-	    reader_loop(Socket, Pid, ReaderState#reader_state{principal = Data});
-	_ ->
-	    send_message(Pid, "Wrong principal\r\n"),
+    {ok, cancel} = timer:cancel(ReaderState#reader_state.timeout_ref),
+    LoginJsonData =  try
+			 mochijson2:decode(Data)
+		     catch
+			 error:Reason ->
+			     error_logger:info_msg("Couldn't parse json data. Reason: ~p~n", [Reason]),
+			     undefined
+		     end,
+    case LoginJsonData of
+	{struct, JsonData} ->
+	    Login =  proplists:get_value(<<"login">>, JsonData),
+	    Password =  proplists:get_value(<<"password">>, JsonData),
+	    case auth_module:check_principal(Login, Password) of
+		true ->
+		    send_message(Pid, "AUTH-OK"),
+		    reader_loop(Socket, Pid, ReaderState#reader_state{principal = Login});
+		false ->
+		    error_logger:info_msg("Wrong login:~p~n", [Login]),
+		    close_socket(Pid)
+	    end;
+	undefined ->
 	    close_socket(Pid)
     end.
 
