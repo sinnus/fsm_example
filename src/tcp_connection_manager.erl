@@ -10,13 +10,15 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, add_connection/1, remove_connection/1]).
+-export([start_link/0, add_connection/1, remove_connection/1,
+	 add_principal_connection/2, remove_principal_connection/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {connections}).
+-record(state, {connections,
+		principal2connection}).
 
 %%====================================================================
 %% API
@@ -36,6 +38,14 @@ remove_connection(TcpConnectionPid) ->
     gen_server:call(?MODULE, {remove_connection, TcpConnectionPid}),
     ok.
 
+add_principal_connection(Principal, TcpConnectionPid) ->
+    gen_server:call(?MODULE, {add_principal_connection, Principal, TcpConnectionPid}),
+    ok.
+
+remove_principal_connection(Principal, TcpConnectionPid) ->
+    gen_server:call(?MODULE, {remove_principal_connection, Principal, TcpConnectionPid}),
+    ok.
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -48,7 +58,8 @@ remove_connection(TcpConnectionPid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{connections=[]}}.
+    {ok, #state{connections=[],
+		principal2connection = dict:new()}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -70,6 +81,14 @@ handle_call({remove_connection, TcpConnectionPid}, _From, State) ->
     NewState = State#state{connections = NewConnections},
     error_logger:info_msg("remove tcp connection. New list ~p~n", [NewConnections]),
     {reply, ok, NewState};
+
+handle_call({add_principal_connection, Principal, _TcpConnectionPid}, _From, State) ->
+    error_logger:info_msg("add principal ~p~n", [Principal]),
+    {reply, ok, State};
+
+handle_call({remove_principal_connection, Principal, _TcpConnectionPid}, _From, State) ->
+    error_logger:info_msg("remove principal ~p~n", [Principal]),
+    {reply, ok, State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,

@@ -18,7 +18,7 @@
 
 -define(HANDSHAKE_TIMEOUT, 30).
 
--record(state, {socket}).
+-record(state, {socket, principal}).
 -record(reader_state, {principal, timeout_ref}).
 %%====================================================================
 %% API
@@ -85,6 +85,7 @@ check_principal(Socket, Pid, ReaderState, Data) ->
 	    Password =  proplists:get_value(<<"password">>, JsonData),
 	    case auth_module:check_principal(Login, Password) of
 		true ->
+		    gen_server:cast(Pid, {authorize, Login}),
 		    send_message(Pid, "AUTH-OK"),
 		    reader_loop(Socket, Pid, ReaderState#reader_state{principal = Login});
 		false ->
@@ -109,7 +110,7 @@ check_principal(Socket, Pid, ReaderState, Data) ->
 init([Socket]) ->
     process_flag(trap_exit, true),
     spawn_link(?MODULE, reader_start, [Socket, self()]),
-    {ok, #state{socket = Socket}}.
+    {ok, #state{socket = Socket, principal = none}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -138,10 +139,13 @@ handle_cast(Request, State) ->
 	{send_message, Message} ->
 	    Socket = State#state.socket,
 	    gen_tcp:send(Socket, Message),
-	    {noreply,State};
+	    {noreply, State};
+	{authorize, Principal} ->
+	    tcp_connection_manager:add_principal_connection(Principal, self()),
+	    {noreply, State#state{principal = Principal}};
 	Other ->
 	    error_logger:info_msg("unknown cast, request=~w", [Other]),
-	    {noreply,State}
+	    {noreply, State}
     end.
 
 %%--------------------------------------------------------------------
@@ -165,8 +169,10 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(Reason, State) ->
     Socket = State#state.socket,
+    Principal = State#state.principal,
     inet:close(Socket),
     tcp_connection_manager:remove_connection(self()),
+    tcp_connection_manager:remove_principal_connection(Principal, self()),
     error_logger:info_msg("terminating, pid=~w, reason=~w", [self(), Reason]),
     ok.
 
