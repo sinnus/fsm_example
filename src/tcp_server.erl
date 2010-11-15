@@ -35,7 +35,10 @@ loop(LSocket) ->
     case gen_tcp:accept(LSocket) of
 	{ok, Socket} ->
 	    error_logger:info_msg("accepted connection~n", []),
-	    {ok, _Pid} = tcp_connection:start(Socket),
+
+	    {ok, Pid} = tcp_connection:start(Socket),
+	    gen_tcp:controlling_process(Socket, Pid),
+
 	    loop(LSocket);
 	{error, Reason} ->
 	    error_logger:error_msg("couldn't accept socket. Reason: ~p~n", [Reason]),
