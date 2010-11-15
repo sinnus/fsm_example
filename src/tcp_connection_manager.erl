@@ -11,14 +11,15 @@
 
 %% API
 -export([start_link/0, add_connection/1, remove_connection/1,
-	 add_principal_connection/2, remove_principal_connection/2]).
+	 add_principal_connection/2, remove_principal_connection/2,
+	 send_message/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
 -record(state, {connections,
-		principal2connection}).
+		principal2connections}).
 
 %%====================================================================
 %% API
@@ -46,6 +47,12 @@ remove_principal_connection(Principal, TcpConnectionPid) ->
     gen_server:call(?MODULE, {remove_principal_connection, Principal, TcpConnectionPid}),
     ok.
 
+send_message(Principal, Message) ->
+    Connections = gen_server:call(?MODULE, {get_connections, Principal}),
+    lists:foreach(fun(Connection) -> tcp_connection:send_message(Connection, Message) end, 
+		  Connections),
+    ok.
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -59,7 +66,7 @@ remove_principal_connection(Principal, TcpConnectionPid) ->
 %%--------------------------------------------------------------------
 init([]) ->
     {ok, #state{connections=[],
-		principal2connection = dict:new()}}.
+		principal2connections = dict:new()}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -82,13 +89,43 @@ handle_call({remove_connection, TcpConnectionPid}, _From, State) ->
     error_logger:info_msg("remove tcp connection. New list ~p~n", [NewConnections]),
     {reply, ok, NewState};
 
-handle_call({add_principal_connection, Principal, _TcpConnectionPid}, _From, State) ->
-    error_logger:info_msg("add principal ~p~n", [Principal]),
-    {reply, ok, State};
+handle_call({add_principal_connection, Principal, TcpConnectionPid}, _From, State) ->
+    NewPrincipal2Connections = case dict:find(Principal, State#state.principal2connections) of
+				   {ok, Connections} ->
+				       dict:append(Principal, TcpConnectionPid, State#state.principal2connections);
+				   error ->
+				       dict:store(Principal, [TcpConnectionPid], State#state.principal2connections)
+			       end,
+    error_logger:info_msg("add principal ~p, new list: ~p~n", [Principal, dict:find(Principal, NewPrincipal2Connections)]),
+    NewState = State#state{principal2connections = NewPrincipal2Connections},
+    {reply, ok, NewState};
 
-handle_call({remove_principal_connection, Principal, _TcpConnectionPid}, _From, State) ->
-    error_logger:info_msg("remove principal ~p~n", [Principal]),
-    {reply, ok, State};
+handle_call({remove_principal_connection, Principal, TcpConnectionPid}, _From, State) ->
+    NewPrincipal2Connections = case dict:find(Principal, State#state.principal2connections) of
+				   {ok, Connections} ->
+				       NewConnections = lists:delete(TcpConnectionPid, Connections),
+				       case NewConnections of
+					   [] ->
+					       dict:erase(Principal, State#state.principal2connections);
+					   _ ->
+					       dict:store(Principal, NewConnections, State#state.principal2connections)
+				       end;
+				   error ->
+				       State#state.principal2connections
+			       end,
+
+    error_logger:info_msg("remove principal ~p, new list: ~p~n", [Principal, dict:find(Principal, NewPrincipal2Connections)]),
+    NewState = State#state{principal2connections = NewPrincipal2Connections},
+    {reply, ok, NewState};
+
+handle_call({get_connections, Principal}, _From, State) ->
+    ResultConnections = case dict:find(Principal, State#state.principal2connections) of
+		      {ok, Connections} ->
+			  Connections;
+		      error ->
+			  []
+		  end,
+    {reply, ResultConnections, State};
 
 handle_call(_Request, _From, State) ->
     Reply = ok,

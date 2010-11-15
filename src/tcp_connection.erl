@@ -10,7 +10,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, start/1, reader_start/2, close_socket/1]).
+-export([start_link/1, start/1, reader_start/2, close_socket/1,
+	 send_message/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -85,7 +86,7 @@ check_principal(Socket, Pid, ReaderState, Data) ->
 	    Password =  proplists:get_value(<<"password">>, JsonData),
 	    case auth_module:check_principal(Login, Password) of
 		true ->
-		    gen_server:cast(Pid, {authorize, Login}),
+		    gen_server:call(Pid, {authorize, Login}),
 		    send_message(Pid, "AUTH-OK"),
 		    reader_loop(Socket, Pid, ReaderState#reader_state{principal = Login});
 		false ->
@@ -121,6 +122,10 @@ init([Socket]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call({authorize, Principal}, _From, State) ->
+    tcp_connection_manager:add_principal_connection(Principal, self()),
+    {reply, ok, State#state{principal = Principal}};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -140,9 +145,6 @@ handle_cast(Request, State) ->
 	    Socket = State#state.socket,
 	    gen_tcp:send(Socket, Message),
 	    {noreply, State};
-	{authorize, Principal} ->
-	    tcp_connection_manager:add_principal_connection(Principal, self()),
-	    {noreply, State#state{principal = Principal}};
 	Other ->
 	    error_logger:info_msg("unknown cast, request=~w", [Other]),
 	    {noreply, State}
