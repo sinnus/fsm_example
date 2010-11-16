@@ -3,7 +3,8 @@
   {vsn, "0.01"},
   {modules, [
     fsm_application,
-    fsm_sup
+    fsm_sup,
+    reloader
   ]},
   {registered, []},
   {mod, {fsm_application, []}},
