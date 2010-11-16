@@ -1,10 +1,15 @@
 ERL          ?= erl
 EBIN_DIRS    := $(wildcard deps/*/ebin)
-APP          := game_prototype
+APP          := fsm_application
 
-all:
+all: erl ebin/$(APP).app
+
+erl:
 	@$(ERL) -pa $(EBIN_DIRS) -noinput +B \
-          -eval 'case make:all() of up_to_date -> halt(0); error -> halt(1) end.'
+	  -eval 'case make:all() of up_to_date -> halt(0); error -> halt(1) end.'
+
+docs:
+	@erl -noshell -run edoc_run application '$(APP)' '"."' '[]'
 
 clean: 
 	@echo "removing:"
@@ -15,9 +20,3 @@ ebin/$(APP).app: src/$(APP).app
 
 test: all
 	$(ERL) -pa ebin/ -eval "test_suite:test()"  -s init stop -noshell
-
-perf: test
-	$(ERL) -pa ebin/ -eval "performance_suite:test()"  -s init stop -noshell
-
-run_server: all
-	erl -pa ebin -s tcp_server
