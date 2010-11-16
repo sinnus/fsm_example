@@ -40,13 +40,25 @@ start_link() ->
 %% specifications.
 %%--------------------------------------------------------------------
 init([]) ->
-    Listener = {tcp_listener,
-		{tcp_listener, start_link,[]},
-		permanent,
-		brutal_kill,
-		worker,
-		['tcp_listener']},
-    {ok,{{one_for_one,0,1}, [Listener]}}.
+    TcpConnectionManager =
+	{tcp_connection_manager,
+	 {tcp_connection_manager, start_link,[]},
+	 permanent,
+	 brutal_kill,
+	 worker,
+	 ['tcp_connection_manager']},
+    
+    Listener =
+	{tcp_listener,
+	 {tcp_listener, start_link,[]},
+	 permanent,
+	 brutal_kill,
+	 worker,
+	 ['tcp_listener']},
+
+    {ok,{{one_for_one,0,1},
+	 [Listener,
+	  TcpConnectionManager]}}.
 
 %%====================================================================
 %% Internal functions

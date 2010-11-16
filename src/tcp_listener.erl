@@ -71,7 +71,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 start_listener() ->
-    tcp_connection_manager:start_link(),
     case gen_tcp:listen(?TCP_PORT, ?TCP_OPTS) of
 	{ok, LSocket} ->
 	    accept(LSocket);
